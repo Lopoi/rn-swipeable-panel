@@ -106,7 +106,7 @@ class SwipeablePanel extends Component {
     if (newStatus == 0) {
       newY = PANEL_HEIGHT;
     } else if (newStatus == 1) newY = FULL_HEIGHT - 400;
-    else if (newStatus == 2) newY = 0;
+    else if (newStatus == 2) newY = this.props.largeHeight;
 
     this.setState({
       showComponent: true,
@@ -179,6 +179,9 @@ class SwipeablePanel extends Component {
               onPress={this.props.onClose}
             />
           )}
+          <View>
+            {this.props.outsideScroll}
+          </View>
           <ScrollView
             onTouchStart={() => {
               return false;
@@ -231,7 +234,8 @@ SwipeablePanel.defaultProps = {
   showCloseButton: false,
   noBar: false,
   closeOnTouchOutside: false,
-  barStyle: {}
+  barStyle: {},
+  largeHeight: 0,
 };
 
 const SwipeablePanelStyles = StyleSheet.create({
