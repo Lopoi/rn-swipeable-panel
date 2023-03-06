@@ -8,14 +8,15 @@ import {
   Animated,
   Dimensions,
   PanResponder,
+  ScrollViewProps,
 } from 'react-native';
 
 import {Bar} from './Bar';
 import {Close} from './Close';
 
-const FULL_HEIGHT = Dimensions.get('window').height;
-const FULL_WIDTH = Dimensions.get('window').width;
-const PANEL_HEIGHT = FULL_HEIGHT - 100;
+let FULL_HEIGHT = Dimensions.get('window').height;
+let FULL_WIDTH = Dimensions.get('window').width;
+let PANEL_HEIGHT = FULL_HEIGHT - 100;
 
 const STATUS = {
   CLOSED: 0,
@@ -24,29 +25,38 @@ const STATUS = {
 };
 
 type SwipeablePanelProps = {
-  isActive: Boolean;
-  onClose: Function;
-  showCloseButton?: Boolean;
-  fullWidth?: Boolean;
-  noBackgroundOpacity?: Boolean;
-  style?: Object;
-  closeRootStyle?: Object;
-  closeIconStyle?: Object;
-  closeOnTouchOutside: Boolean;
-  onlyLarge?: Boolean;
-  openLarge?: Boolean;
-  noBar?: Boolean;
+  isActive: boolean;
+  onClose: () => void;
+  showCloseButton?: boolean;
+  fullWidth?: boolean;
+  noBackgroundOpacity?: boolean;
+  style?: object;
+  closeRootStyle?: object;
+  closeIconStyle?: object;
+  closeOnTouchOutside?: boolean;
+  onlyLarge?: boolean;
+  onlySmall?: boolean;
+  smallPanelHeight?: number;
+  openLarge?: boolean;
+  noBar?: boolean;
+  barStyle?: object;
+  allowTouchOutside?: boolean;
+  scrollViewProps?: ScrollViewProps;
 };
 
 type MaybeAnimated<T> = T | Animated.Value;
 
 type SwipeablePanelState = {
   status: number;
-  isActive: Boolean;
-  showComponent: Boolean;
-  canScroll: Boolean;
+  isActive: boolean;
+  showComponent: boolean;
+  canScroll: boolean;
   opacity: Animated.Value;
   pan: any;
+  orientation: 'portrait' | 'landscape';
+  deviceWidth: number;
+  deviceHeight: number;
+  panelHeight: number;
 };
 
 class SwipeablePanel extends Component<
@@ -54,9 +64,9 @@ class SwipeablePanel extends Component<
   SwipeablePanelState
 > {
   pan: Animated.ValueXY;
-  isClosing: Boolean;
+  isClosing: boolean;
   _panResponder: any;
-  animatedValueY: Number;
+  animatedValueY: number;
   constructor(props: SwipeablePanelProps) {
     super(props);
     this.state = {
@@ -66,6 +76,10 @@ class SwipeablePanel extends Component<
       canScroll: false,
       opacity: new Animated.Value(0),
       pan: new Animated.ValueXY({x: 0, y: FULL_HEIGHT}),
+      orientation: FULL_HEIGHT >= FULL_WIDTH ? 'portrait' : 'landscape',
+      deviceWidth: FULL_WIDTH,
+      deviceHeight: FULL_HEIGHT,
+      panelHeight: PANEL_HEIGHT,
     };
 
     this.pan = new Animated.ValueXY({x: 0, y: FULL_HEIGHT});
@@ -83,72 +97,120 @@ class SwipeablePanel extends Component<
       },
       onPanResponderMove: (evt, gestureState) => {
         if (
-          (this.state.status == 1 &&
+          (this.state.status === 1 &&
             Math.abs(this.state.pan.y._value) <= this.state.pan.y._offset) ||
-          (this.state.status == 2 && this.state.pan.y._value > -1)
+          (this.state.status === 2 && this.state.pan.y._value > -1)
         )
           this.state.pan.setValue({
             x: 0,
-            y: gestureState.dy,
+            y:
+              this.state.status === STATUS.LARGE
+                ? Math.max(0, gestureState.dy)
+                : gestureState.dy,
           });
       },
       onPanResponderRelease: (evt, gestureState) => {
-        const {onlyLarge} = this.props;
+        const {onlyLarge, onlySmall} = this.props;
         this.state.pan.flattenOffset();
 
-        if (gestureState.dy == 0) {
-          this._animateTo(this.state.status);
-        } else if (gestureState.dy < -100 || gestureState.vy < -0.5) {
-          if (this.state.status == STATUS.SMALL) this._animateTo(STATUS.LARGE);
-          else {
-            this._animateTo(STATUS.LARGE);
-          }
+        if (gestureState.dy === 0) this._animateTo(this.state.status);
+        else if (gestureState.dy < -100 || gestureState.vy < -0.5) {
+          if (this.state.status === STATUS.SMALL)
+            this._animateTo(onlySmall ? STATUS.SMALL : STATUS.LARGE);
+          else this._animateTo(STATUS.LARGE);
         } else if (gestureState.dy > 100 || gestureState.vy > 0.5) {
-          if (this.state.status == STATUS.LARGE)
+          if (this.state.status === STATUS.LARGE)
             this._animateTo(onlyLarge ? STATUS.CLOSED : STATUS.SMALL);
           else this._animateTo(0);
-        } else {
-          this._animateTo(this.state.status);
-        }
+        } else this._animateTo(this.state.status);
       },
     });
   }
 
   componentDidMount = () => {
+    const {isActive, openLarge, onlyLarge, onlySmall} = this.props;
+
     this.animatedValueY = 0;
     this.state.pan.y.addListener(
       (value: any) => (this.animatedValueY = value.value),
     );
 
-    this.setState({isActive: this.props.isActive});
+    this.setState({isActive});
+
+    if (isActive)
+      this._animateTo(
+        onlySmall
+          ? STATUS.SMALL
+          : openLarge
+          ? STATUS.LARGE
+          : onlyLarge
+          ? STATUS.LARGE
+          : STATUS.SMALL,
+      );
+
+    Dimensions.addEventListener('change', this._onOrientationChange);
+  };
+
+  _onOrientationChange = () => {
+    const dimesions = Dimensions.get('screen');
+    FULL_HEIGHT = dimesions.height;
+    FULL_WIDTH = dimesions.width;
+    PANEL_HEIGHT = FULL_HEIGHT - 100;
+
+    this.setState({
+      orientation:
+        dimesions.height >= dimesions.width ? 'portrait' : 'landscape',
+      deviceWidth: FULL_WIDTH,
+      deviceHeight: FULL_HEIGHT,
+      panelHeight: PANEL_HEIGHT,
+    });
+
+    this.props.onClose();
   };
 
   componentDidUpdate(
     prevProps: SwipeablePanelProps,
     prevState: SwipeablePanelState,
   ) {
-    const {isActive, openLarge, onlyLarge} = this.props;
+    const {isActive, openLarge, onlyLarge, onlySmall} = this.props;
+    if (onlyLarge && onlySmall)
+      console.warn(
+        'Ops. You are using both onlyLarge and onlySmall options. onlySmall will override the onlyLarge in this situation. Please select one of them or none.',
+      );
 
     if (prevProps.isActive !== isActive) {
       this.setState({isActive});
 
       if (isActive) {
         this._animateTo(
-          openLarge ? STATUS.LARGE : onlyLarge ? STATUS.LARGE : STATUS.SMALL,
+          onlySmall
+            ? STATUS.SMALL
+            : openLarge
+            ? STATUS.LARGE
+            : onlyLarge
+            ? STATUS.LARGE
+            : STATUS.SMALL,
         );
       } else {
         this._animateTo();
       }
     }
+
+    if (prevState.orientation !== this.state.orientation)
+      this._animateTo(this.state.status);
   }
 
   _animateTo = (newStatus = 0) => {
+    const { smallPanelHeight } = this.props;
     let newY = 0;
 
-    if (newStatus == 0) {
-      newY = PANEL_HEIGHT;
-    } else if (newStatus == 1) newY = FULL_HEIGHT - 400;
-    else if (newStatus == 2) newY = 0;
+    if (newStatus === STATUS.CLOSED) newY = PANEL_HEIGHT;
+    else if (newStatus === STATUS.SMALL)
+      newY =
+        this.state.orientation === 'portrait'
+          ? FULL_HEIGHT - (smallPanelHeight ?? 400)
+          : FULL_HEIGHT / 3;
+    else if (newStatus === STATUS.LARGE) newY = 0;
 
     this.setState({
       showComponent: true,
@@ -159,27 +221,31 @@ class SwipeablePanel extends Component<
       toValue: {x: 0, y: newY},
       tension: 80,
       friction: 25,
-    }).start();
-
-    this.setState({canScroll: newStatus == 2 ? true : false});
-
-    if (newStatus == 0) {
-      setTimeout(() => {
+      useNativeDriver: true,
+      restDisplacementThreshold: 10,
+      restSpeedThreshold: 10,
+    }).start(() => {
+      if (newStatus === 0) {
         this.props.onClose();
         this.setState({
           showComponent: false,
         });
-      }, 360);
-    }
+      } else
+        this.setState({canScroll: newStatus === STATUS.LARGE ? true : false});
+    });
   };
 
   render() {
-    const {showComponent} = this.state;
+    const {showComponent, deviceWidth, deviceHeight, panelHeight} = this.state;
     const {
       noBackgroundOpacity,
       style,
+      barStyle,
       closeRootStyle,
       closeIconStyle,
+      onClose,
+      allowTouchOutside,
+      closeOnTouchOutside,
     } = this.props;
 
     return showComponent ? (
@@ -190,14 +256,20 @@ class SwipeablePanel extends Component<
             backgroundColor: noBackgroundOpacity
               ? 'rgba(0,0,0,0)'
               : 'rgba(0,0,0,0.5)',
+            height: allowTouchOutside ? 'auto' : deviceHeight,
+            width: deviceWidth,
           },
         ]}>
-        {this.props.closeOnTouchOutside && (
-          <TouchableWithoutFeedback onPress={() => this.props.onClose()}>
+        {closeOnTouchOutside && (
+          <TouchableWithoutFeedback onPress={() => onClose()}>
             <View
               style={[
                 SwipeablePanelStyles.background,
-                {backgroundColor: 'rgba(0,0,0,0)'},
+                {
+                  width: deviceWidth,
+                  backgroundColor: 'rgba(0,0,0,0)',
+                  height: allowTouchOutside ? 'auto' : deviceHeight,
+                },
               ]}
             />
           </TouchableWithoutFeedback>
@@ -205,12 +277,15 @@ class SwipeablePanel extends Component<
         <Animated.View
           style={[
             SwipeablePanelStyles.panel,
-            {width: this.props.fullWidth ? FULL_WIDTH : FULL_WIDTH - 50},
+            {
+              width: this.props.fullWidth ? deviceWidth : deviceWidth - 50,
+              height: panelHeight,
+            },
             {transform: this.state.pan.getTranslateTransform()},
             style,
           ]}
           {...this._panResponder.panHandlers}>
-          {!this.props.noBar && <Bar />}
+          {!this.props.noBar && <Bar barStyle={barStyle} />}
           {this.props.showCloseButton && (
             <Close
               rootStyle={closeRootStyle}
@@ -227,7 +302,8 @@ class SwipeablePanel extends Component<
             }}
             contentContainerStyle={
               SwipeablePanelStyles.scrollViewContentContainerStyle
-            }>
+            }
+            {...this.props.scrollViewProps}>
             {this.state.canScroll ? (
               <TouchableHighlight>
                 <React.Fragment>{this.props.children}</React.Fragment>
@@ -246,10 +322,9 @@ const SwipeablePanelStyles = StyleSheet.create({
   background: {
     position: 'absolute',
     zIndex: 1,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    width: FULL_WIDTH,
-    height: FULL_HEIGHT,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   panel: {
@@ -281,4 +356,7 @@ const SwipeablePanelStyles = StyleSheet.create({
   },
 });
 
-export default SwipeablePanel;
+const SMALL_PANEL_CONTENT_HEIGHT = PANEL_HEIGHT - (FULL_HEIGHT - 400) - 25;
+const LARGE_PANEL_CONTENT_HEIGHT = PANEL_HEIGHT - 25;
+
+export {SwipeablePanel, LARGE_PANEL_CONTENT_HEIGHT, SMALL_PANEL_CONTENT_HEIGHT};

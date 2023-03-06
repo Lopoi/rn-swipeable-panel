@@ -2,13 +2,13 @@ import React from 'react';
 import {StyleSheet, View} from 'react-native';
 
 type BarProps = {
-  barStyles?: Object;
+  barStyle?: Object;
 };
 
-export const Bar = ({barStyles}: BarProps) => {
+export const Bar = ({barStyle}: BarProps) => {
   return (
     <View style={BarStyles.barContainer}>
-      <View style={[BarStyles.bar, barStyles]} />
+      <View style={[BarStyles.bar, barStyle]} />
     </View>
   );
 };
@@ -20,7 +20,7 @@ const BarStyles = StyleSheet.create({
     alignItems: 'center',
   },
   bar: {
-    width: '40%',
+    width: '10%',
     height: 5,
     borderRadius: 5,
     marginTop: 10,
